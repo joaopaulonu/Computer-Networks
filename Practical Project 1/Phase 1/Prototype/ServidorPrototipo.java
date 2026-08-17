@@ -4,7 +4,6 @@ import com.sun.management.OperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
 
 public class ServidorPrototipo {
-    // Flag de memória compartilhada para parar a thread
     static volatile boolean monitorRodando = false; 
 
     public static void main(String[] args) throws Exception {
@@ -17,18 +16,15 @@ public class ServidorPrototipo {
         
         OperatingSystemMXBean osBean = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
-        // Envia mensagem imediata MSG1
         out.println("<12:00>: CONECTADO!! Menu: CPU, memoria, Quit, Exit");
 
         String comando;
-        // Loop infinito lendo do cliente (Thread 1 do diagrama)
         while ((comando = in.readLine()) != null) {
             
             if (comando.startsWith("CPU-")) {
                 int tempoSegundos = Integer.parseInt(comando.split("-")[1]);
                 monitorRodando = true;
                 
-                // Criação da Thread secundária do Monitor
                 new Thread(() -> {
                     try {
                         while (monitorRodando) {

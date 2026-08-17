@@ -10,7 +10,6 @@ public class ClientePrototipo {
         PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
         Scanner teclado = new Scanner(System.in);
 
-        // Thread 2 do Cliente: Recebe dados da conexão em loop e imprime na tela
         new Thread(() -> {
             try {
                 String mensagemServidor;
@@ -22,7 +21,6 @@ public class ClientePrototipo {
             }
         }).start();
 
-        // Thread 1 do Cliente (Main): Lê do teclado e envia pelo socket
         while (true) {
             String comando = teclado.nextLine();
             out.println(comando);
