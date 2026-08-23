@@ -113,7 +113,9 @@ public class Servidor {
             // Instancia e inicia a thread secundária de monitoramento[cite: 1]
             MonitorTask task = new MonitorTask(tipo, intervalo, out);
             monitoresAtivos.put(tipo, task);
-            new Thread(task).start();
+            Thread threadMonitor = new Thread(task);
+            task.definirThread(threadMonitor);
+            threadMonitor.start();
             
             out.println("[SERVER] Monitor de " + tipo.toUpperCase() + " iniciado a cada " + intervalo + "s.");
         }
@@ -151,6 +153,7 @@ public class Servidor {
         private final PrintWriter out;
         // Flag de memória compartilhada para parar a thread de forma limpa[cite: 1]
         private volatile boolean executando = true;
+        private Thread threadMonitor;
         private final OperatingSystemMXBean osBean;
 
         public MonitorTask(String tipo, int intervaloSegundos, PrintWriter out) {
@@ -162,6 +165,13 @@ public class Servidor {
 
         public void parar() {
             this.executando = false;
+            if (threadMonitor != null) {
+                threadMonitor.interrupt();
+            }
+        }
+
+        public void definirThread(Thread threadMonitor) {
+            this.threadMonitor = threadMonitor;
         }
 
         @Override

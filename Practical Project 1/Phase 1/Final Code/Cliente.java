@@ -26,22 +26,34 @@ public class Cliente {
             Thread threadOuvinte = new Thread(new OuvinteServidor(in));
             threadOuvinte.start();
 
-            // Thread 1 do Cliente (Main): Lê comandos via teclado e envia pelo Socket[cite: 1]
-            Scanner teclado = new Scanner(System.in);
-            while (true) {
-                String comando = teclado.nextLine();
-                out.println(comando);
+            // Thread 1 do Cliente: Lê comandos via teclado e envia pelo socket
+            Thread threadTeclado = new Thread(() -> {
+                try (Scanner teclado = new Scanner(System.in)) {
+                    while (teclado.hasNextLine()) {
+                        String comando = teclado.nextLine();
+                        out.println(comando);
 
-                if (comando.equalsIgnoreCase("Exit")) {
-                    System.out.println("[CLIENTE] Encerrando aplicação cliente...");
-                    break;
+                        if (comando.equalsIgnoreCase("Exit")) {
+                            System.out.println("[CLIENTE] Encerrando aplicação cliente...");
+                            break;
+                        }
+                    }
                 }
+            });
+            threadTeclado.start();
+            try {
+                threadTeclado.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
 
             // Encerramento adequado dos recursos
             socket.close();
-            teclado.close();
-            System.exit(0);
+            try {
+                threadOuvinte.join(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
 
         } catch (IOException e) {
             System.err.println("[CLIENTE-ERRO] Não foi possível conectar ao servidor. Certifique-se de que o Servidor.java está rodando!");
