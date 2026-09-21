@@ -16,30 +16,54 @@ public class ServidorPrototipo {
         
         OperatingSystemMXBean osBean = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
-        out.println("<12:00>: CONECTADO!! Menu: CPU, memoria, Quit, Exit");
+        out.println("<12:00>: CONECTADO!! Menu: CPU-segundos, MEM-segundos, Quit, Exit");
 
         String comando;
         while ((comando = in.readLine()) != null) {
             
-            if (comando.startsWith("CPU-")) {
-                int tempoSegundos = Integer.parseInt(comando.split("-")[1]);
-                monitorRodando = true;
-                
-                new Thread(() -> {
-                    try {
-                        while (monitorRodando) {
-                            double cpu = osBean.getCpuLoad() * 100;
-                            out.println("MONITOR CPU: " + String.format("%.2f", cpu) + "%");
-                            Thread.sleep(tempoSegundos * 1000L);
+            String[] partesComando = comando.split("-", -1);
+
+            if (partesComando.length == 2
+                    && (partesComando[0].equals("CPU") || partesComando[0].equals("MEM"))) {
+                try {
+                    int tempoSegundos = Integer.parseInt(partesComando[1]);
+                    if (tempoSegundos <= 0) {
+                        out.println("O intervalo deve ser maior que zero.");
+                        continue;
+                    }
+
+                    monitorRodando = false;
+                    boolean monitorarCpu = partesComando[0].equals("CPU");
+                    monitorRodando = true;
+
+                    new Thread(() -> {
+                        try {
+                            while (monitorRodando) {
+                                if (monitorarCpu) {
+                                    double cpu = osBean.getCpuLoad() * 100;
+                                    out.println("MONITOR CPU: " + String.format("%.2f", cpu) + "%");
+                                } else {
+                                    long totalMemoria = osBean.getTotalMemorySize();
+                                    long memoriaLivre = osBean.getFreeMemorySize();
+                                    double memoriaUsada = (double) (totalMemoria - memoriaLivre) / totalMemoria * 100;
+                                    out.println("MONITOR MEMORIA: " + String.format("%.2f", memoriaUsada) + "%");
+                                }
+                                Thread.sleep(tempoSegundos * 1000L);
+                            }
+                            out.println("Monitor encerrado.");
+                        } catch (Exception e) {
+                            out.println("Erro no monitoramento.");
                         }
-                        out.println("Monitor CPU encerrado.");
-                    } catch (Exception e) { }
-                }).start();
-                
+                    }).start();
+                } catch (NumberFormatException e) {
+                    out.println("Intervalo invalido. Use CPU-segundos ou MEM-segundos.");
+                }
             } else if (comando.equals("Quit")) {
-                monitorRodando = false; // Interrompe a thread acima
+                monitorRodando = false;
             } else if (comando.equals("Exit")) {
                 break;
+            } else {
+                out.println("Comando invalido. Use CPU-segundos, MEM-segundos, Quit ou Exit.");
             }
         }
         

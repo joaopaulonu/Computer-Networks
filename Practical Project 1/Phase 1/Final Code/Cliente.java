@@ -5,28 +5,37 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.Scanner;
 
-/**
- * Cliente para Monitoramento Remoto de Sistema.
- * Conecta ao servidor e gerencia simultaneamente a leitura de teclado e exibições na tela[cite: 1].
- */
 public class Cliente {
-    private static final String IP_SERVIDOR = "127.0.0.1";
+    private static volatile boolean conexaoEncerrada = false;
     private static final int PORTA_SERVIDOR = 12345;
 
     public static void main(String[] args) {
-        System.out.println("[CLIENTE] Tentando conectar ao servidor " + IP_SERVIDOR + ":" + PORTA_SERVIDOR + "...");
+        String ipServidor = args.length > 0 ? args[0] : "127.0.0.1";
+        System.out.println("[CLIENTE] Tentando conectar ao servidor " + ipServidor + ":" + PORTA_SERVIDOR + "...");
 
         try {
-            Socket socket = new Socket(IP_SERVIDOR, PORTA_SERVIDOR);
+            Socket socket = new Socket(ipServidor, PORTA_SERVIDOR);
             
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-            // Thread 2 do Cliente: Recebe dados do servidor em loop e imprime na tela[cite: 1]
-            Thread threadOuvinte = new Thread(new OuvinteServidor(in));
+            Thread threadOuvinte = new Thread(() -> {
+                try {
+                    String mensagemServidor;
+                    while ((mensagemServidor = in.readLine()) != null) {
+                        System.out.println(mensagemServidor);
+                    }
+                } catch (IOException ignored) {
+                } finally {
+                    if (!conexaoEncerrada) {
+                        System.out.println("[CLIENTE] Conexao encerrada pelo servidor.");
+                        System.exit(0);
+                    }
+                }
+            });
+            threadOuvinte.setDaemon(true);
             threadOuvinte.start();
 
-            // Thread 1 do Cliente: Lê comandos via teclado e envia pelo socket
             Thread threadTeclado = new Thread(() -> {
                 try (Scanner teclado = new Scanner(System.in)) {
                     while (teclado.hasNextLine()) {
@@ -34,6 +43,7 @@ public class Cliente {
                         out.println(comando);
 
                         if (comando.equalsIgnoreCase("Exit")) {
+                            conexaoEncerrada = true;
                             System.out.println("[CLIENTE] Encerrando aplicação cliente...");
                             break;
                         }
@@ -47,7 +57,6 @@ public class Cliente {
                 Thread.currentThread().interrupt();
             }
 
-            // Encerramento adequado dos recursos
             socket.close();
             try {
                 threadOuvinte.join(1000);
@@ -60,31 +69,4 @@ public class Cliente {
         }
     }
 
-    // =========================================================================
-    // CLASSES INTERNAS
-    // =========================================================================
-
-    /**
-     * Thread 2 do Cliente: Loop infinito de escuta da rede[cite: 1].
-     */
-    private static class OuvinteServidor implements Runnable {
-        private final BufferedReader in;
-
-        public OuvinteServidor(BufferedReader in) {
-            this.in = in;
-        }
-
-        @Override
-        public void run() {
-            try {
-                String mensagemServidor;
-                // Loop de recepção e impressão contínua[cite: 1]
-                while ((mensagemServidor = in.readLine()) != null) {
-                    System.out.println(mensagemServidor);
-                }
-            } catch (IOException e) {
-                System.out.println("[CLIENTE] Conexão com o servidor foi encerrada.");
-            }
-        }
-    }
 }

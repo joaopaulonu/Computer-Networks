@@ -10,25 +10,45 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Servidor de Monitoramento Remoto de Sistema.
- * Gerencia sockets TCP e spowna threads de monitoramento sob demanda.
- */
 public class Servidor {
     private static final int PORTA = 12345;
+    private static final AtomicInteger CLIENTES_ATIVOS = new AtomicInteger();
+    private static final OperatingSystemMXBean OS_BEAN =
+            (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
     public static void main(String[] args) {
+        if (args.length != 1) {
+            System.err.println("Uso: java Servidor <max_clientes>");
+            return;
+        }
+
+        int limite;
+        try {
+            limite = Integer.parseInt(args[0]);
+            if (limite < 1) throw new NumberFormatException();
+        } catch (NumberFormatException e) {
+            System.err.println("O limite deve ser um inteiro maior que zero.");
+            return;
+        }
+
         System.out.println("[SERVER] Iniciando Servidor de Monitoramento...");
         try (ServerSocket serverSocket = new ServerSocket(PORTA)) {
-            System.out.println("[SERVER] Aguardando conexões na porta " + PORTA + "...");
+            System.out.println("[SERVER] Aguardando conexoes na porta " + PORTA
+                    + " (limite: " + limite + ")...");
             
-            // Loop para aceitar cliente (Fase 1: processa a conexão ativa)
             while (true) {
                 Socket clientSocket = serverSocket.accept();
+
+                if (CLIENTES_ATIVOS.incrementAndGet() > limite) {
+                    CLIENTES_ATIVOS.decrementAndGet();
+                    rejeitarCliente(clientSocket, limite);
+                    continue;
+                }
+
                 System.out.println("[SERVER] Cliente conectado de: " + clientSocket.getRemoteSocketAddress());
                 
-                // Thread 1 do Servidor: Gerencia a sessão com o cliente
                 new Thread(new GerenciadorCliente(clientSocket)).start();
             }
         } catch (IOException e) {
@@ -36,16 +56,16 @@ public class Servidor {
         }
     }
 
-    // =========================================================================
-    // CLASSES INTERNAS (Mapeamento de Arquitetura em único arquivo)
-    // =========================================================================
+    private static void rejeitarCliente(Socket socket, int limite) {
+        try (Socket recusado = socket;
+             PrintWriter out = new PrintWriter(recusado.getOutputStream(), true)) {
+            out.println("Limite de " + limite + " clientes atingido. Tente mais tarde.");
+        } catch (IOException ignored) {
+        }
+    }
 
-    /**
-     * Thread 1 do Servidor: Escuta e interpreta os comandos vindo da rede.
-     */
     private static class GerenciadorCliente implements Runnable {
         private final Socket socket;
-        // Memória Compartilhada Thread-Safe para controlar as threads de monitoramento ativas[cite: 1]
         private final Map<String, MonitorTask> monitoresAtivos = new ConcurrentHashMap<>();
 
         public GerenciadorCliente(Socket socket) {
@@ -58,13 +78,11 @@ public class Servidor {
                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))
             ) {
-                // Envio da Mensagem MSG1 exigida pela especificação[cite: 1]
                 String msgBoasVindas = String.format("<%s>: CONECTADO!! Menu: CPU-<seg>, memoria-<seg>, Quit, Exit", 
                         FormatadorData.obterHorarioAtual());
                 out.println(msgBoasVindas);
 
                 String comando;
-                // Loop de leitura do socket[cite: 1]
                 while ((comando = in.readLine()) != null) {
                     comando = comando.trim();
 
@@ -84,11 +102,13 @@ public class Servidor {
             } finally {
                 pararTodosMonitores(null);
                 fecharSocket();
+                int restantes = CLIENTES_ATIVOS.decrementAndGet();
+                System.out.println("[SERVER] Cliente desconectado. Ativos: " + restantes);
             }
         }
 
         private void iniciarMonitor(String comando, PrintWriter out) {
-            String[] partes = comando.split("-");
+            String[] partes = comando.split("-", 2);
             if (partes.length != 2) {
                 out.println("[SERVER-ERRO] Sintaxe incorreta. Exemplo esperado: CPU-5 ou memoria-2");
                 return;
@@ -105,12 +125,11 @@ public class Servidor {
                 return;
             }
 
-            // Se o monitor já estiver rodando, encerra a versão anterior antes de abrir nova
-            if (monitoresAtivos.containsKey(tipo)) {
-                monitoresAtivos.get(tipo).parar();
+            MonitorTask anterior = monitoresAtivos.remove(tipo);
+            if (anterior != null) {
+                anterior.parar();
             }
 
-            // Instancia e inicia a thread secundária de monitoramento[cite: 1]
             MonitorTask task = new MonitorTask(tipo, intervalo, out);
             monitoresAtivos.put(tipo, task);
             Thread threadMonitor = new Thread(task);
@@ -144,14 +163,10 @@ public class Servidor {
         }
     }
 
-    /**
-     * Threads Secundárias: Tarefa de coleta de métricas em loop[cite: 1].
-     */
     private static class MonitorTask implements Runnable {
         private final String tipo;
         private final int intervaloSegundos;
         private final PrintWriter out;
-        // Flag de memória compartilhada para parar a thread de forma limpa[cite: 1]
         private volatile boolean executando = true;
         private Thread threadMonitor;
         private final OperatingSystemMXBean osBean;
@@ -160,7 +175,7 @@ public class Servidor {
             this.tipo = tipo;
             this.intervaloSegundos = intervaloSegundos;
             this.out = out;
-            this.osBean = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
+            this.osBean = OS_BEAN;
         }
 
         public void parar() {
@@ -194,7 +209,7 @@ public class Servidor {
         private String coletarMetrica() {
             if ("CPU".equalsIgnoreCase(tipo)) {
                 double cpuLoad = osBean.getCpuLoad() * 100;
-                if (cpuLoad < 0) cpuLoad = 0.0; // Tratamento para primeiras leituras do sistema
+                if (cpuLoad < 0) cpuLoad = 0.0;
                 return String.format("MÉTRICA CPU: Uso = %.2f%%", cpuLoad);
             } else if ("memoria".equalsIgnoreCase(tipo)) {
                 long totalMem = osBean.getTotalMemorySize();
@@ -209,9 +224,6 @@ public class Servidor {
         }
     }
 
-    /**
-     * Utilitário para formatação da data/hora nos padrões exigidos[cite: 1].
-     */
     private static class FormatadorData {
         private static final DateTimeFormatter FORMATO_HORA = DateTimeFormatter.ofPattern("HH:mm:ss");
 

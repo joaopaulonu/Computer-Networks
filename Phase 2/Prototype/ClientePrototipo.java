@@ -4,7 +4,6 @@ import java.util.Scanner;
 
 public class ClientePrototipo {
 
-    // Distingue "saí eu (Exit)" de "o servidor fechou a ligação" (ex.: limite excedido).
     static volatile boolean saidaVoluntaria = false;
 
     public static void main(String[] args) throws Exception {
@@ -24,8 +23,6 @@ public class ClientePrototipo {
             } catch (Exception e) {
                 if (!saidaVoluntaria) System.out.println("Conexao fechada.");
             }
-            // ADAPTAÇÃO FASE 2: se o servidor fechou a ligação (recusa por lotação ou queda),
-            // termina o programa; senão a thread principal ficaria bloqueada no teclado.
             if (!saidaVoluntaria) {
                 System.out.println("Ligacao terminada pelo servidor.");
                 System.exit(0);
