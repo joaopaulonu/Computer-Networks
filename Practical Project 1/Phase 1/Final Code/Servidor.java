@@ -19,6 +19,7 @@ public class Servidor {
             (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
     public static void main(String[] args) {
+        // Verifica se informou o limite de clientes
         if (args.length != 1) {
             System.err.println("Uso: java Servidor <max_clientes>");
             return;
@@ -34,13 +35,16 @@ public class Servidor {
         }
 
         System.out.println("[SERVER] Iniciando Servidor de Monitoramento...");
+        // Inicia o servidor
         try (ServerSocket serverSocket = new ServerSocket(PORTA)) {
             System.out.println("[SERVER] Aguardando conexoes na porta " + PORTA
                     + " (limite: " + limite + ")...");
             
             while (true) {
+                // Aguarda a conexão do cliente
                 Socket clientSocket = serverSocket.accept();
 
+                // Se passou do limite, recusa o cliente
                 if (CLIENTES_ATIVOS.incrementAndGet() > limite) {
                     CLIENTES_ATIVOS.decrementAndGet();
                     rejeitarCliente(clientSocket, limite);
@@ -49,6 +53,7 @@ public class Servidor {
 
                 System.out.println("[SERVER] Cliente conectado de: " + clientSocket.getRemoteSocketAddress());
                 
+                // Atende o cliente em uma nova thread
                 new Thread(new GerenciadorCliente(clientSocket)).start();
             }
         } catch (IOException e) {
@@ -56,6 +61,7 @@ public class Servidor {
         }
     }
 
+    // Recusa a conexão quando o limite é atingido
     private static void rejeitarCliente(Socket socket, int limite) {
         try (Socket recusado = socket;
              PrintWriter out = new PrintWriter(recusado.getOutputStream(), true)) {
@@ -63,6 +69,7 @@ public class Servidor {
         } catch (IOException ignored) {
         }
     }
+
 
     private static class GerenciadorCliente implements Runnable {
         private final Socket socket;
@@ -78,6 +85,7 @@ public class Servidor {
                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))
             ) {
+                // Instrução
                 String msgBoasVindas = String.format("<%s>: CONECTADO!! Menu: CPU-<seg>, memoria-<seg>, Quit, Exit", 
                         FormatadorData.obterHorarioAtual());
                 out.println(msgBoasVindas);
@@ -86,6 +94,7 @@ public class Servidor {
                 while ((comando = in.readLine()) != null) {
                     comando = comando.trim();
 
+                    // Verifica se o comando é CPU-segundos ou memoria-segundos
                     if (comando.startsWith("CPU-") || comando.startsWith("memoria-")) {
                         iniciarMonitor(comando, out);
                     } else if (comando.equalsIgnoreCase("Quit")) {
@@ -108,6 +117,7 @@ public class Servidor {
         }
 
         private void iniciarMonitor(String comando, PrintWriter out) {
+            // Divide o comando pelo "-"
             String[] partes = comando.split("-", 2);
             if (partes.length != 2) {
                 out.println("[SERVER-ERRO] Sintaxe incorreta. Exemplo esperado: CPU-5 ou memoria-2");
@@ -125,11 +135,13 @@ public class Servidor {
                 return;
             }
 
+            // Para o monitor antigo do mesmo tipo antes de iniciar o novo
             MonitorTask anterior = monitoresAtivos.remove(tipo);
             if (anterior != null) {
                 anterior.parar();
             }
 
+            // Cria e inicia o novo monitoramento
             MonitorTask task = new MonitorTask(tipo, intervalo, out);
             monitoresAtivos.put(tipo, task);
             Thread threadMonitor = new Thread(task);
@@ -189,6 +201,7 @@ public class Servidor {
             this.threadMonitor = threadMonitor;
         }
 
+        // Envia as medições periodicamente
         @Override
         public void run() {
             while (executando) {
@@ -206,6 +219,7 @@ public class Servidor {
             }
         }
 
+        // Consulta o uso de hardware (CPU e Memória)
         private String coletarMetrica() {
             if ("CPU".equalsIgnoreCase(tipo)) {
                 double cpuLoad = osBean.getCpuLoad() * 100;

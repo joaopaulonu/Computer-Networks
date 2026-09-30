@@ -10,15 +10,19 @@ public class Cliente {
     private static final int PORTA_SERVIDOR = 12345;
 
     public static void main(String[] args) {
+        // Pega o IP informado ou usa 127.0.0.1 por padrão
         String ipServidor = args.length > 0 ? args[0] : "127.0.0.1";
         System.out.println("[CLIENTE] Tentando conectar ao servidor " + ipServidor + ":" + PORTA_SERVIDOR + "...");
 
         try {
+            // Conecta ao servidor no IP e porta
             Socket socket = new Socket(ipServidor, PORTA_SERVIDOR);
             
+            // Leitor de mensagens do servidor e emissor de mensagens do cliente
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
+            // Exibe o que o servidor enviar
             Thread threadOuvinte = new Thread(() -> {
                 try {
                     String mensagemServidor;
@@ -36,6 +40,7 @@ public class Cliente {
             threadOuvinte.setDaemon(true);
             threadOuvinte.start();
 
+            // Envia os comandos digitados para o servidor
             Thread threadTeclado = new Thread(() -> {
                 try (Scanner teclado = new Scanner(System.in)) {
                     while (teclado.hasNextLine()) {
@@ -57,6 +62,7 @@ public class Cliente {
                 Thread.currentThread().interrupt();
             }
 
+            // Fecha a conexão
             socket.close();
             try {
                 threadOuvinte.join(1000);
